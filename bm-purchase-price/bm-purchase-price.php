@@ -3,7 +3,7 @@
  * Plugin Name: BM Purchase Price & Margin
  * Plugin URI:  https://example.com/bm-purchase-price
  * Description: Gère les prix d'achat, les marges et les prix de vente pour les produits simples et les variations WooCommerce.
- * Version:     1.0.3
+ * Version:     1.1.0
  * Author:      BM
  * Text Domain: bm-ppm
  * Requires at least: 6.0
@@ -30,7 +30,7 @@ function bm_ppm_enqueue_scripts( string $hook ): void {
         'bm-ppm',
         plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
         [ 'jquery' ],
-        '1.0.3',
+        '1.1.0',
         true
     );
 }

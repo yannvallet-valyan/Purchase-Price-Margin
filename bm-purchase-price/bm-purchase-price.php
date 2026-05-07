@@ -3,7 +3,7 @@
  * Plugin Name: BM Purchase Price & Margin
  * Plugin URI:  https://example.com/bm-purchase-price
  * Description: Gère les prix d'achat, les marges et les prix de vente pour les produits simples et les variations WooCommerce.
- * Version:     1.0.2
+ * Version:     1.1.0
  * Author:      BM
  * Text Domain: bm-ppm
  * Requires at least: 6.0
@@ -30,7 +30,7 @@ function bm_ppm_enqueue_scripts( string $hook ): void {
         'bm-ppm',
         plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
         [ 'jquery' ],
-        '1.0.2',
+        '1.1.0',
         true
     );
 }
@@ -105,10 +105,26 @@ function bm_ppm_simple_fields(): void {
 
 add_action( 'woocommerce_process_product_meta', 'bm_ppm_save_simple_fields' );
 function bm_ppm_save_simple_fields( int $post_id ): void {
-    $purchase = ( isset( $_POST['bm_purchase_price'] ) && $_POST['bm_purchase_price'] !== '' )
-        ? (float) $_POST['bm_purchase_price'] : null;
-    $margin = ( isset( $_POST['bm_margin_percent'] ) && $_POST['bm_margin_percent'] !== '' )
-        ? (float) $_POST['bm_margin_percent'] : null;
+    // Variable products submit both scalar (bm_purchase_price) and array
+    // (bm_purchase_price[N]) fields. PHP resolves this to an array, and
+    // (float) array === 1.0, which would corrupt _regular_price. We must
+    // only process the scalar fields when the product is not variable.
+    $product_type = isset( $_POST['product-type'] ) ? sanitize_key( $_POST['product-type'] ) : '';
+    if ( $product_type === 'variable' ) {
+        return;
+    }
+
+    $raw_purchase = $_POST['bm_purchase_price'] ?? '';
+    $raw_margin   = $_POST['bm_margin_percent'] ?? '';
+
+    // Guard against an array value (should not happen after the type check,
+    // but keeps the function safe if called from unexpected contexts).
+    if ( is_array( $raw_purchase ) || is_array( $raw_margin ) ) {
+        return;
+    }
+
+    $purchase = ( $raw_purchase !== '' ) ? (float) $raw_purchase : null;
+    $margin   = ( $raw_margin !== '' )   ? (float) $raw_margin   : null;
 
     if ( $purchase !== null ) {
         update_post_meta( $post_id, '_bm_purchase_price', $purchase );
@@ -117,7 +133,6 @@ function bm_ppm_save_simple_fields( int $post_id ): void {
         update_post_meta( $post_id, '_bm_margin_percent', $margin );
     }
 
-    // Recalculate only when both values are valid
     if (
         $purchase !== null && $margin !== null &&
         $purchase > 0 && $margin >= 0 && $margin < 100

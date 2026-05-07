@@ -3,7 +3,7 @@
  * Plugin Name: BM Purchase Price & Margin
  * Plugin URI:  https://example.com/bm-purchase-price
  * Description: Gère les prix d'achat, les marges et les prix de vente pour les produits simples et les variations WooCommerce.
- * Version:     1.0.0
+ * Version:     1.0.1
  * Author:      BM
  * Text Domain: bm-ppm
  * Requires at least: 6.0
@@ -30,16 +30,38 @@ function bm_ppm_enqueue_scripts( string $hook ): void {
         'bm-ppm',
         plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
         [ 'jquery' ],
-        '1.0.0',
+        '1.0.1',
         true
     );
+}
+
+add_action( 'admin_head', 'bm_ppm_admin_css' );
+function bm_ppm_admin_css(): void {
+    $screen = get_current_screen();
+    if ( ! $screen ) return;
+    if ( $screen->id === 'edit-product' ) {
+        echo '<style>
+            .column-bm_purchase_price,
+            .column-bm_margin_percent { white-space: nowrap; width: 90px; }
+        </style>';
+    }
+    if ( $screen->post_type === 'product' ) {
+        echo '<style>
+            .bm-ppm-variation-group { display: flex; gap: 12px; flex-wrap: wrap;
+                clear: both; padding: 6px 9px; border-top: 1px solid #eee; margin-top: 4px; }
+            .bm-ppm-variation-group .form-row { margin: 0; flex: 1 1 140px; }
+            .bm-ppm-variation-group label { display: block; font-weight: 600;
+                margin-bottom: 3px; font-size: 12px; }
+            .bm-ppm-variation-group input[type="number"] { width: 100%; }
+        </style>';
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Simple product — General tab fields
 // ---------------------------------------------------------------------------
 
-add_action( 'woocommerce_general_product_data', 'bm_ppm_simple_fields' );
+add_action( 'woocommerce_product_options_general_product_data', 'bm_ppm_simple_fields' );
 function bm_ppm_simple_fields(): void {
     global $post;
     $purchase = get_post_meta( $post->ID, '_bm_purchase_price', true );
@@ -113,8 +135,8 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
     $purchase = get_post_meta( $variation->ID, '_bm_purchase_price', true );
     $margin   = get_post_meta( $variation->ID, '_bm_margin_percent', true );
     ?>
-    <div class="bm-ppm-group bm-ppm-variation-group" style="display:flex;gap:12px;flex-wrap:wrap;padding:6px 0;">
-        <p class="form-row form-row-first">
+    <div class="bm-ppm-variation-group">
+        <div class="form-row">
             <label><?php esc_html_e( 'Prix d\'achat (€)', 'bm-ppm' ); ?></label>
             <input
                 type="number"
@@ -125,8 +147,8 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
                 value="<?php echo esc_attr( $purchase ); ?>"
                 data-loop="<?php echo esc_attr( $loop ); ?>"
             />
-        </p>
-        <p class="form-row form-row-last">
+        </div>
+        <div class="form-row">
             <label><?php esc_html_e( 'Marge (%)', 'bm-ppm' ); ?></label>
             <input
                 type="number"
@@ -138,7 +160,7 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
                 value="<?php echo esc_attr( $margin ); ?>"
                 data-loop="<?php echo esc_attr( $loop ); ?>"
             />
-        </p>
+        </div>
     </div>
     <?php
 }

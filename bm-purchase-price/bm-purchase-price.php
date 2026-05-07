@@ -13,55 +13,77 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// ---------------------------------------------------------------------------
-// Enqueue admin script
-// ---------------------------------------------------------------------------
-
-add_action( 'admin_enqueue_scripts', 'bm_ppm_enqueue_scripts' );
-function bm_ppm_enqueue_scripts( string $hook ): void {
-    if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) {
+// Ne rien faire si WooCommerce n'est pas actif.
+add_action( 'plugins_loaded', 'bm_ppm_init' );
+function bm_ppm_init(): void {
+    if ( ! class_exists( 'WooCommerce' ) ) {
         return;
     }
+    bm_ppm_register_hooks();
+}
+
+function bm_ppm_register_hooks(): void {
+    // Admin — scripts et CSS (un seul hook, une seule vérification de page)
+    add_action( 'admin_enqueue_scripts', 'bm_ppm_enqueue_assets' );
+
+    // Produit simple — affichage et sauvegarde
+    add_action( 'woocommerce_product_options_general_product_data', 'bm_ppm_simple_fields' );
+    add_action( 'woocommerce_process_product_meta', 'bm_ppm_save_simple_fields' );
+
+    // Variations — affichage et sauvegarde
+    add_action( 'woocommerce_variation_options_pricing', 'bm_ppm_variation_fields', 10, 3 );
+    add_action( 'woocommerce_save_product_variation', 'bm_ppm_save_variation_fields', 10, 2 );
+
+    // Liste des produits — colonnes
+    add_filter( 'manage_edit-product_columns', 'bm_ppm_add_columns' );
+    add_action( 'manage_product_posts_custom_column', 'bm_ppm_render_columns', 10, 2 );
+}
+
+// ---------------------------------------------------------------------------
+// Assets — JS + CSS inline, uniquement sur les pages produit
+// ---------------------------------------------------------------------------
+
+function bm_ppm_enqueue_assets( string $hook ): void {
     $screen = get_current_screen();
     if ( ! $screen || $screen->post_type !== 'product' ) {
         return;
     }
-    wp_enqueue_script(
-        'bm-ppm',
-        plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
-        [ 'jquery' ],
-        '1.1.0',
-        true
-    );
-}
 
-add_action( 'admin_head', 'bm_ppm_admin_css' );
-function bm_ppm_admin_css(): void {
-    $screen = get_current_screen();
-    if ( ! $screen ) return;
+    // CSS liste produits
     if ( $screen->id === 'edit-product' ) {
-        echo '<style>
+        wp_register_style( 'bm-ppm', false );
+        wp_enqueue_style( 'bm-ppm' );
+        wp_add_inline_style( 'bm-ppm', '
             .column-bm_purchase_price,
             .column-bm_margin_percent { white-space: nowrap; width: 90px; }
-        </style>';
+        ' );
+        return;
     }
-    if ( $screen->post_type === 'product' ) {
-        echo '<style>
+
+    // CSS + JS page édition produit
+    if ( in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) {
+        wp_enqueue_script(
+            'bm-ppm',
+            plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
+            [ 'jquery' ],
+            '1.1.0',
+            true
+        );
+        wp_add_inline_style( 'woocommerce_admin_styles', '
             .bm-ppm-variation-group { display: flex; gap: 12px; flex-wrap: wrap;
                 clear: both; padding: 6px 9px; border-top: 1px solid #eee; margin-top: 4px; }
             .bm-ppm-variation-group .form-row { margin: 0; flex: 1 1 140px; }
             .bm-ppm-variation-group label { display: block; font-weight: 600;
                 margin-bottom: 3px; font-size: 12px; }
             .bm-ppm-variation-group input[type="number"] { width: 100%; }
-        </style>';
+        ' );
     }
 }
 
 // ---------------------------------------------------------------------------
-// Simple product — General tab fields
+// Produit simple — champs onglet Général
 // ---------------------------------------------------------------------------
 
-add_action( 'woocommerce_product_options_general_product_data', 'bm_ppm_simple_fields' );
 function bm_ppm_simple_fields(): void {
     global $post;
     $purchase = get_post_meta( $post->ID, '_bm_purchase_price', true );
@@ -69,7 +91,7 @@ function bm_ppm_simple_fields(): void {
     ?>
     <div class="options_group bm-ppm-group">
         <p class="form-field bm_purchase_price_field">
-            <label for="bm_purchase_price"><?php esc_html_e( 'Prix d\'achat (€)', 'bm-ppm' ); ?></label>
+            <label for="bm_purchase_price"><?php esc_html_e( "Prix d'achat (€)", 'bm-ppm' ); ?></label>
             <input
                 type="number"
                 id="bm_purchase_price"
@@ -78,7 +100,6 @@ function bm_ppm_simple_fields(): void {
                 step="0.01"
                 min="0"
                 value="<?php echo esc_attr( $purchase ); ?>"
-                data-target="#_regular_price"
             />
         </p>
         <p class="form-field bm_margin_percent_field">
@@ -92,7 +113,6 @@ function bm_ppm_simple_fields(): void {
                 min="0"
                 max="99.99"
                 value="<?php echo esc_attr( $margin ); ?>"
-                data-target="#_regular_price"
             />
         </p>
     </div>
@@ -100,15 +120,14 @@ function bm_ppm_simple_fields(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Simple product — Save
+// Produit simple — sauvegarde
 // ---------------------------------------------------------------------------
 
-add_action( 'woocommerce_process_product_meta', 'bm_ppm_save_simple_fields' );
 function bm_ppm_save_simple_fields( int $post_id ): void {
-    // Variable products submit both scalar (bm_purchase_price) and array
-    // (bm_purchase_price[N]) fields. PHP resolves this to an array, and
-    // (float) array === 1.0, which would corrupt _regular_price. We must
-    // only process the scalar fields when the product is not variable.
+    // Les produits variables soumettent à la fois le champ scalaire caché
+    // (bm_purchase_price vide) et les champs tableau des variations
+    // (bm_purchase_price[N]). PHP résout le conflit en tableau ; (float)array
+    // vaut 1.0 et corromprait _regular_price. On ignore les produits variables.
     $product_type = isset( $_POST['product-type'] ) ? sanitize_key( $_POST['product-type'] ) : '';
     if ( $product_type === 'variable' ) {
         return;
@@ -117,8 +136,6 @@ function bm_ppm_save_simple_fields( int $post_id ): void {
     $raw_purchase = $_POST['bm_purchase_price'] ?? '';
     $raw_margin   = $_POST['bm_margin_percent'] ?? '';
 
-    // Guard against an array value (should not happen after the type check,
-    // but keeps the function safe if called from unexpected contexts).
     if ( is_array( $raw_purchase ) || is_array( $raw_margin ) ) {
         return;
     }
@@ -144,17 +161,16 @@ function bm_ppm_save_simple_fields( int $post_id ): void {
 }
 
 // ---------------------------------------------------------------------------
-// Variation fields
+// Variations — champs
 // ---------------------------------------------------------------------------
 
-add_action( 'woocommerce_variation_options_pricing', 'bm_ppm_variation_fields', 10, 3 );
 function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $variation ): void {
     $purchase = get_post_meta( $variation->ID, '_bm_purchase_price', true );
     $margin   = get_post_meta( $variation->ID, '_bm_margin_percent', true );
     ?>
     <div class="bm-ppm-variation-group">
         <div class="form-row">
-            <label><?php esc_html_e( 'Prix d\'achat (€)', 'bm-ppm' ); ?></label>
+            <label><?php esc_html_e( "Prix d'achat (€)", 'bm-ppm' ); ?></label>
             <input
                 type="number"
                 name="bm_purchase_price[<?php echo esc_attr( $loop ); ?>]"
@@ -183,10 +199,9 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
 }
 
 // ---------------------------------------------------------------------------
-// Variation — Save
+// Variations — sauvegarde
 // ---------------------------------------------------------------------------
 
-add_action( 'woocommerce_save_product_variation', 'bm_ppm_save_variation_fields', 10, 2 );
 function bm_ppm_save_variation_fields( int $variation_id, int $loop ): void {
     $purchase = ( isset( $_POST['bm_purchase_price'][ $loop ] ) && $_POST['bm_purchase_price'][ $loop ] !== '' )
         ? (float) $_POST['bm_purchase_price'][ $loop ] : null;
@@ -211,23 +226,21 @@ function bm_ppm_save_variation_fields( int $variation_id, int $loop ): void {
 }
 
 // ---------------------------------------------------------------------------
-// Products list — columns
+// Liste produits — colonnes
 // ---------------------------------------------------------------------------
 
-add_filter( 'manage_edit-product_columns', 'bm_ppm_add_columns' );
 function bm_ppm_add_columns( array $columns ): array {
     $new = [];
     foreach ( $columns as $key => $label ) {
         $new[ $key ] = $label;
         if ( $key === 'price' ) {
-            $new['bm_purchase_price'] = __( 'Prix d\'achat', 'bm-ppm' );
+            $new['bm_purchase_price'] = __( "Prix d'achat", 'bm-ppm' );
             $new['bm_margin_percent'] = __( 'Marge', 'bm-ppm' );
         }
     }
     return $new;
 }
 
-add_action( 'manage_product_posts_custom_column', 'bm_ppm_render_columns', 10, 2 );
 function bm_ppm_render_columns( string $column, int $post_id ): void {
     if ( $column === 'bm_purchase_price' ) {
         $val = get_post_meta( $post_id, '_bm_purchase_price', true );

@@ -150,13 +150,21 @@ function bm_ppm_save_simple_fields( int $post_id ): void {
         update_post_meta( $post_id, '_bm_margin_percent', $margin );
     }
 
-    if (
-        $purchase !== null && $margin !== null &&
-        $purchase > 0 && $margin >= 0 && $margin < 100
-    ) {
+    if ( $purchase !== null && $purchase > 0 && $margin !== null && $margin >= 0 && $margin < 100 ) {
+        // Cas 1 : prix d'achat + marge → calcule le prix de vente
         $sale_price = round( $purchase / ( 1 - $margin / 100 ), 2 );
         update_post_meta( $post_id, '_regular_price', $sale_price );
         update_post_meta( $post_id, '_price', $sale_price );
+
+    } elseif ( $purchase !== null && $purchase > 0 && $margin === null ) {
+        // Cas 2 : prix d'achat + tarif régulier (sans marge) → calcule la marge
+        // Couvre les imports CSV où _regular_price est soumis par WooCommerce.
+        $raw_regular = $_POST['_regular_price'] ?? '';
+        $sale_price  = ( $raw_regular !== '' ) ? (float) $raw_regular : 0.0;
+        if ( $sale_price > 0 && $purchase < $sale_price ) {
+            $derived_margin = round( ( 1 - $purchase / $sale_price ) * 100, 2 );
+            update_post_meta( $post_id, '_bm_margin_percent', $derived_margin );
+        }
     }
 }
 
@@ -215,13 +223,20 @@ function bm_ppm_save_variation_fields( int $variation_id, int $loop ): void {
         update_post_meta( $variation_id, '_bm_margin_percent', $margin );
     }
 
-    if (
-        $purchase !== null && $margin !== null &&
-        $purchase > 0 && $margin >= 0 && $margin < 100
-    ) {
+    if ( $purchase !== null && $purchase > 0 && $margin !== null && $margin >= 0 && $margin < 100 ) {
+        // Cas 1 : prix d'achat + marge → calcule le prix de vente
         $sale_price = round( $purchase / ( 1 - $margin / 100 ), 2 );
         update_post_meta( $variation_id, '_regular_price', $sale_price );
         update_post_meta( $variation_id, '_price', $sale_price );
+
+    } elseif ( $purchase !== null && $purchase > 0 && $margin === null ) {
+        // Cas 2 : prix d'achat + tarif régulier (sans marge) → calcule la marge
+        $raw_regular = $_POST['variable_regular_price'][ $loop ] ?? '';
+        $sale_price  = ( $raw_regular !== '' ) ? (float) $raw_regular : 0.0;
+        if ( $sale_price > 0 && $purchase < $sale_price ) {
+            $derived_margin = round( ( 1 - $purchase / $sale_price ) * 100, 2 );
+            update_post_meta( $variation_id, '_bm_margin_percent', $derived_margin );
+        }
     }
 }
 

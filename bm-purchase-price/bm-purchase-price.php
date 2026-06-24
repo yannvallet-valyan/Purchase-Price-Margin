@@ -3,7 +3,7 @@
  * Plugin Name: BM Purchase Price & Margin
  * Plugin URI:  https://example.com/bm-purchase-price
  * Description: Gère les prix d'achat, les marges et les prix de vente pour les produits simples et les variations WooCommerce.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      BM
  * Text Domain: bm-ppm
  * Requires at least: 6.0
@@ -66,7 +66,7 @@ function bm_ppm_enqueue_assets( string $hook ): void {
             'bm-ppm',
             plugin_dir_url( __FILE__ ) . 'assets/js/bm-ppm.js',
             [ 'jquery' ],
-            '1.1.0',
+            '1.2.0',
             true
         );
         wp_add_inline_style( 'woocommerce_admin_styles', '
@@ -99,6 +99,7 @@ function bm_ppm_simple_fields(): void {
                 class="short bm-ppm-purchase"
                 step="0.01"
                 min="0"
+                autocomplete="off"
                 value="<?php echo esc_attr( $purchase ); ?>"
             />
         </p>
@@ -112,6 +113,7 @@ function bm_ppm_simple_fields(): void {
                 step="0.01"
                 min="0"
                 max="99.99"
+                autocomplete="off"
                 value="<?php echo esc_attr( $margin ); ?>"
             />
         </p>
@@ -177,6 +179,7 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
                 class="bm-ppm-purchase bm-ppm-variation-purchase"
                 step="0.01"
                 min="0"
+                autocomplete="off"
                 value="<?php echo esc_attr( $purchase ); ?>"
                 data-loop="<?php echo esc_attr( $loop ); ?>"
             />
@@ -190,6 +193,7 @@ function bm_ppm_variation_fields( int $loop, array $variation_data, WP_Post $var
                 step="0.01"
                 min="0"
                 max="99.99"
+                autocomplete="off"
                 value="<?php echo esc_attr( $margin ); ?>"
                 data-loop="<?php echo esc_attr( $loop ); ?>"
             />
